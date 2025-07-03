@@ -41,6 +41,10 @@ NOTIFICATION_MODE_COUNT = '0'
 NOTIFICATION_MODE_SHORT_SUMMARY = '3'
 NOTIFICATION_MODE_SUMMARY = '1'
 NOTIFICATION_MODE_SINGLE = '2'
+SUPPORTED_DESKTOP_ENVIRONMENTS = [
+    "gnome",
+    "cinnamon",
+]
 
 plugin_defaults = { 
 	'notification_mode' : NOTIFICATION_MODE_SHORT_SUMMARY,
@@ -56,7 +60,7 @@ class LibNotifyPlugin(Plugin):
 		self._lock = threading.Lock()
 		self._notification_server_wait_event = threading.Event()
 		self._notification_server_ready = False
-		self._is_gnome = False
+		self._is_supported_env = False
 		self._mails_added_hook: Optional[Callable[[list[Mail], list[Mail]], None]] = None
 		
 	
@@ -69,7 +73,7 @@ class LibNotifyPlugin(Plugin):
 		# initialize Notification
 		if not self._initialized:
 			Notify.init("Mailnagger")
-			self._is_gnome = self._is_gnome_environment(['XDG_CURRENT_DESKTOP', 'GDMSESSION'])
+			self._is_supported_env = self._is_supported_environment(['XDG_CURRENT_DESKTOP', 'GDMSESSION'])
 			self._initialized = True
 		
 		def mails_added_hook(new_mails: list[Mail], all_mails: list[Mail]) -> None:
@@ -228,7 +232,7 @@ class LibNotifyPlugin(Plugin):
 				n += 1
 			i += 1
 		
-		if self._is_gnome:
+		if self._is_supported_env:
 			senders = "<i>%s</i>" % ", ".join(lst)
 		else:
 			senders = ", ".join(lst)
@@ -258,13 +262,13 @@ class LibNotifyPlugin(Plugin):
 		ubound = len(mails) if len(mails) <= self._max_mails else self._max_mails
 
 		for i in range(ubound):
-			if self._is_gnome:
+			if self._is_supported_env:
 				body += "%s:\n<i>%s</i>\n\n" % (self._get_sender(mails[i]), mails[i].subject)
 			else:
 				body += "%s  -  %s\n" % (ellipsize(self._get_sender(mails[i]), 20), ellipsize(mails[i].subject, 20))
 
 		if len(mails) > self._max_mails:
-			if self._is_gnome:
+			if self._is_supported_env:
 				body += "<i>%s</i>" % _("(and {0} more)").format(str(len(mails) - self._max_mails))
 			else:
 				body += _("(and {0} more)").format(str(len(mails) - self._max_mails))
@@ -295,7 +299,7 @@ class LibNotifyPlugin(Plugin):
 			# Remember the associated message, so we know when to remove the notification:
 			n.mail = mail
 			notification_id = str(id(n))
-			if self._is_gnome:
+			if self._is_supported_env:
 				n.add_action("mark-as-read", _("Mark as read"), 
 					self._notification_action_handler, (mail, notification_id))			
 			n.show()
@@ -332,7 +336,7 @@ class LibNotifyPlugin(Plugin):
 		n.set_category("email")
 		n.set_hint_string("desktop-entry", "mailnagger")
 		
-		if self._is_gnome:
+		if self._is_supported_env:
 			n.add_action("default", "default", self._notification_action_handler, None)
 
 		return n
@@ -357,7 +361,7 @@ class LibNotifyPlugin(Plugin):
 			if action == "default":
 				mailclient = get_default_mail_reader()
 				if mailclient is not None:
-					start_subprocess(mailclient)
+					Gio.AppInfo.launch(mailclient)
 
 				# clicking the notification bubble has closed all notifications
 				# so clear the reference array as well. 
@@ -390,9 +394,10 @@ class LibNotifyPlugin(Plugin):
 		return new_mails + [m for m in all_mails if m not in new_mails]
 
 
-	def _is_gnome_environment(self, env_vars: list[str]) -> bool:
+	def _is_supported_environment(self, env_vars: list[str]) -> bool:
 		for var in env_vars:
-			if 'gnome' in os.environ.get(var, '').lower().split(':'):
+			desktop_env = os.environ.get(var, "").lower()
+			if any(env in desktop_env for env in SUPPORTED_DESKTOP_ENVIRONMENTS):
 				return True
 		return False
 
@@ -402,10 +407,7 @@ def get_default_mail_reader() -> Optional[str]:
 	app_info = Gio.AppInfo.get_default_for_type("x-scheme-handler/mailto", False)
 
 	if app_info is not None:
-		executable = Gio.AppInfo.get_executable(app_info)
-
-		if (executable != None) and (len(executable) > 0):
-			mail_reader = executable
+		mail_reader = app_info
 
 	return mail_reader
 
