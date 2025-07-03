@@ -33,7 +33,6 @@ from typing import Any, Optional
 from gi.repository import Notify, Gio, Gtk
 from Mailnag.common.plugins import Plugin, HookTypes
 from Mailnag.common.i18n import _
-from Mailnag.common.subproc import start_subprocess
 from Mailnag.common.exceptions import InvalidOperationException
 from Mailnag.daemon.mails import Mail
 
